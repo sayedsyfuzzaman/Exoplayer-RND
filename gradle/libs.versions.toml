@@ -1,0 +1,45 @@
+##############################################################  VERSIONS  #################################################################
+[versions]
+
+ktx-version = "1.10.1"
+appcompat-version = "1.6.1"
+material-version = "1.9.0"
+constraintlayout-version = "2.1.4"
+junit-version = "4.13.2"
+ext-junit-version = "1.1.5"
+espresso-core-version = "3.5.1"
+androidGradlePlugin-version = "8.0.1"
+androidJetbrainsPlugin-version = "1.8.20"
+exoplayer-version = "1.0.2"
+
+##############################################################  LIBRARIES  #################################################################
+[libraries]
+
+androidx-ktx = { group = "androidx.core", name="core-ktx", version.ref="ktx-version"}
+appcompat = { group="androidx.appcompat", name="appcompat", version.ref="appcompat-version"}
+material = { group="com.google.android.material", name="material", version.ref="material-version"}
+constraintlayout = { group="androidx.constraintlayout", name="constraintlayout", version.ref="constraintlayout-version"}
+junit = { group="junit", name="junit", version.ref="junit-version"}
+ext-junit = { group="androidx.test.ext", name="junit", version.ref="ext-junit-version"}
+espresso-core = { group="androidx.test.espresso", name="espresso-core", version.ref="espresso-core-version"}
+
+exoplayer = {group="androidx.media3", name="media3-exoplayer", version.ref="exoplayer-version"}
+exoplayer-dash = {group="androidx.media3", name="media3-exoplayer-dash", version.ref="exoplayer-version"}
+exoplayer-ui = {group="androidx.media3", name="media3-ui", version.ref="exoplayer-version"}
+
+
+
+##############################################################  PLUGINS  #################################################################
+[plugins]
+
+android-application = { id = "com.android.application", version.ref = "androidGradlePlugin-version" }
+android-library = { id = "com.android.library", version.ref = "androidGradlePlugin-version" }
+jetbrains-kotlin = { id = "org.jetbrains.kotlin.android", version.ref = "androidJetbrainsPlugin-version" }
+
+
+
+##############################################################  BUNDLES  #################################################################
+
+[bundles]
+
+exoplayer = ["exoplayer","exoplayer-dash", "exoplayer-ui"]
