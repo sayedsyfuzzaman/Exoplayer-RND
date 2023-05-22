@@ -1,14 +1,20 @@
 package com.syfuzzaman.exoplayer_rnd
 
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.analytics.PlaybackStats
+import androidx.media3.exoplayer.analytics.PlaybackStatsListener
 import com.syfuzzaman.exoplayer_rnd.databinding.ActivityMainBinding
 
 
@@ -17,6 +23,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var exoPlayer: ExoPlayer? = null
 
+    private var mediaItemIndex = 0
     private var playbackPosition = 0L
     private var playWhenReady = true
     private val playbackStateListener: Player.Listener = playbackStateListener()
@@ -28,13 +35,17 @@ class MainActivity : AppCompatActivity() {
         val view = binding.root
         setContentView(view)
         preparePlayer()
+
+        Log.d("EXOPLAYER___", "OnCreate Called")
     }
 
-    private fun preparePlayer(){
+    private fun preparePlayer() {
         exoPlayer = ExoPlayer.Builder(this)
+            .setSeekForwardIncrementMs(10000)
+            .setSeekBackIncrementMs(10000)
             .build()
 
-        exoPlayer?.playWhenReady = true
+        exoPlayer?.playWhenReady = playWhenReady
         binding.playerView.player = exoPlayer
 
         // Build the media item with specific media extension
@@ -66,12 +77,69 @@ class MainActivity : AppCompatActivity() {
         exoPlayer?.apply {
             addListener(playbackStateListener)
             addListener(playingChangeListener)
+            seekTo(50000)
             prepare()
             play()
         }
+
+        exoPlayer?.addAnalyticsListener(
+            object : AnalyticsListener {
+                override fun onPlaybackStateChanged(
+                    eventTime: AnalyticsListener.EventTime, @Player.State state: Int
+                ) {
+                    Log.d("EXOPLAYER___ Analytics", eventTime.toString())
+                }
+
+                override fun onDroppedVideoFrames(
+                    eventTime: AnalyticsListener.EventTime,
+                    droppedFrames: Int,
+                    elapsedMs: Long,
+                ) {
+                }
+            }
+        )
+
+        exoPlayer!!
+            .createMessage { messageType: Int, payload: Any? ->
+                Toast.makeText(this, "Are you enjoying?", Toast.LENGTH_SHORT).show()
+            }
+            .setLooper(Looper.getMainLooper())
+            .setPosition(/* mediaItemIndex= */ 0, /* positionMs= */ 55000)
+            .setPayload(firstItem)
+            .setDeleteAfterDelivery(false)
+            .send()
+
+        exoPlayer!!.addAnalyticsListener(
+            PlaybackStatsListener(/* keepHistory= */ true) {
+                    eventTime: AnalyticsListener.EventTime?,
+                    playbackStats: PlaybackStats?,
+                -> // Analytics data for the session started at `eventTime` is ready.
+
+                Log.d(
+                    "EXOPLAYER___ Playback Stat", "Playback summary: " +
+                            "play time = " +
+                            playbackStats!!.totalPlayTimeMs +
+                            ", rebuffers = " +
+                            playbackStats.totalRebufferCount +
+                            "totalPaused time = " +
+                            playbackStats.totalPausedTimeMs
+                )
+                Log.d(
+                    "EXOPLAYER___ Playback Stat",
+                    "Additional calculated summary metrics: " +
+                            "average video bitrate = " +
+                            playbackStats.meanVideoFormatBitrate +
+                            ", mean time between rebuffers = " +
+                            playbackStats.meanTimeBetweenRebuffers
+                )
+            }
+
+        )
+
+
     }
 
-    private fun playingChangeListener() = object : Player.Listener{
+    private fun playingChangeListener() = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
 //                        Log.d("EXOPLAYER___", "Playing: SCREEN ON")
@@ -85,6 +153,13 @@ class MainActivity : AppCompatActivity() {
                 getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
             }
+        }
+
+        override fun onMediaItemTransition(
+            mediaItem: MediaItem?,
+            @Player.MediaItemTransitionReason reason: Int,
+        ) {
+            Log.d("EXOPLAYER___", "NEXT")
         }
     }
 
@@ -101,29 +176,45 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun releasePlayer(){
-        exoPlayer.let { player ->
-            playbackPosition = player!!.currentPosition
-            playWhenReady = player.playWhenReady
-            player.release()
-            exoPlayer = null
+    private fun releasePlayer() {
+        exoPlayer?.let { exoPlayer ->
+            playbackPosition = exoPlayer.currentPosition
+            mediaItemIndex = exoPlayer.currentMediaItemIndex
+            playWhenReady = exoPlayer.playWhenReady
+            exoPlayer.release()
+        }
+        exoPlayer = null
+    }
+
+
+    public override fun onPause() {
+        super.onPause()
+        if (Util.SDK_INT <= 23) {
+            releasePlayer()
         }
     }
 
-    override fun onStop() {
+
+    public override fun onStop() {
         super.onStop()
-        releasePlayer()
+        if (Util.SDK_INT > 23) {
+            releasePlayer()
+        }
     }
 
-
-    override fun onDestroy() {
-        super.onDestroy()
-        releasePlayer()
+    public override fun onResume() {
+        super.onResume()
+        if ((Util.SDK_INT <= 23 || exoPlayer == null)) {
+            preparePlayer()
+        }
     }
 
-    companion object{
-        const val URL = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
-        const val FIRST_URL = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
-        const val SECOND_URL = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+    companion object {
+        const val URL =
+            "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+        const val FIRST_URL =
+            "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
+        const val SECOND_URL =
+            "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
     }
 }
