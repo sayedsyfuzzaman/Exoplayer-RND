@@ -1,20 +1,29 @@
 package com.syfuzzaman.exoplayer_rnd
 
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.Looper
 import android.util.Log
+import android.view.View
 import android.view.WindowManager
+import android.widget.ImageButton
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
+import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.PlaybackStats
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.DefaultTimeBar
 import com.syfuzzaman.exoplayer_rnd.databinding.ActivityMainBinding
 
 
@@ -29,14 +38,108 @@ class MainActivity : AppCompatActivity() {
     private val playbackStateListener: Player.Listener = playbackStateListener()
     private val playingChangeListener: Player.Listener = playingChangeListener()
 
+    private lateinit var forwardBtn: ImageButton
+    private lateinit var rewindBtn: ImageButton
+    private lateinit var timeBar: DefaultTimeBar
+    private lateinit var position: TextView
+    private lateinit var duration: TextView
+    private lateinit var imageViewFullScreen: ImageButton
+
+    private var isFullScreen: Boolean = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         val view = binding.root
         setContentView(view)
-        preparePlayer()
 
+        setFindViewById()
+//        prepareLiveStream()
+        preparePlayer()
         Log.d("EXOPLAYER___", "OnCreate Called")
+    }
+
+    private fun setFullScreen() {
+        imageViewFullScreen.visibility = View.VISIBLE
+
+        imageViewFullScreen.setOnClickListener {
+
+            if (!isFullScreen) {
+                imageViewFullScreen.setImageDrawable(
+                    ContextCompat.getDrawable(
+                        applicationContext,
+                        R.drawable.ic_fullscreen_exit
+                    )
+                )
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            } else {
+                imageViewFullScreen.setImageDrawable(
+                    ContextCompat.getDrawable(
+                        applicationContext,
+                        R.drawable.ic_fullscreen
+                    )
+                )
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+            isFullScreen = !isFullScreen
+        }
+    }
+    private fun setFindViewById() {
+        forwardBtn = binding.root.findViewById(R.id.exo_ffwd)
+        rewindBtn = binding.root.findViewById(R.id.exo_rew)
+        timeBar = binding.root.findViewById(R.id.exo_progress)
+        duration = binding.root.findViewById(androidx.media3.ui.R.id.exo_duration)
+        position = binding.root.findViewById(androidx.media3.ui.R.id.exo_position)
+        imageViewFullScreen = binding.root.findViewById(androidx.media3.ui.R.id.exo_minimal_fullscreen)
+    }
+
+    private fun prepareLiveStream() {
+        // Global settings.
+        exoPlayer =
+            ExoPlayer.Builder(this)
+                .setLivePlaybackSpeedControl(
+                    DefaultLivePlaybackSpeedControl.Builder().setFallbackMaxPlaybackSpeed(1.04f)
+                        .build()
+                )
+                .build()
+
+        binding.playerView.player = exoPlayer
+        setFullScreen()
+
+        //hide controller visibility
+        forwardBtn.visibility = View.GONE
+        rewindBtn.visibility = View.GONE
+        duration.visibility = View.GONE
+        position.visibility = View.GONE
+        timeBar.visibility = View.GONE
+
+
+        // Per MediaItem settings.
+        val mediaItem =
+            MediaItem.Builder()
+                .setUri(LIVE_URL)
+                .setLiveConfiguration(
+                    MediaItem.LiveConfiguration.Builder().setMaxPlaybackSpeed(1.02f).build()
+                )
+                .build()
+
+        exoPlayer!!.setMediaItem(mediaItem)
+
+        exoPlayer!!.addListener(
+            object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                        // Re-initialize player at the live edge.
+                        exoPlayer!!.seekToDefaultPosition()
+                        exoPlayer!!.prepare()
+                    } else {
+                        // Handle other errors
+                    }
+                }
+            }
+        )
+
+        exoPlayer!!.prepare()
+        exoPlayer!!.play()
     }
 
     private fun preparePlayer() {
@@ -47,6 +150,7 @@ class MainActivity : AppCompatActivity() {
 
         exoPlayer?.playWhenReady = playWhenReady
         binding.playerView.player = exoPlayer
+        setFullScreen()
 
         // Build the media item with specific media extension
         val mediaItem = MediaItem.Builder()
@@ -66,13 +170,6 @@ class MainActivity : AppCompatActivity() {
         // Add the media items to be played.
         exoPlayer?.addMediaItem(firstItem)
         exoPlayer?.addMediaItem(secondItem)
-
-//        // Prepare the player.
-//        exoPlayer?.prepare()
-//
-//        // Start the playback.
-//        exoPlayer?.play()
-//
 
         exoPlayer?.apply {
             addListener(playbackStateListener)
@@ -140,20 +237,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun playingChangeListener() = object : Player.Listener {
-        override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (isPlaying) {
-//                        Log.d("EXOPLAYER___", "Playing: SCREEN ON")
-                getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            } else {
-                // Not playing because playback is paused, ended, suppressed, or the player
-                // is buffering, stopped or failed. Check player.playWhenReady,
-                // player.playbackState, player.playbackSuppressionReason and
-                // player.playerError for details.
-//                        Log.d("EXOPLAYER___", "Playing OFF: SCREEN ON DISABLED")
-                getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
-            }
-        }
+//        override fun onIsPlayingChanged(isPlaying: Boolean) {
+//            if (isPlaying) {
+////                        Log.d("EXOPLAYER___", "Playing: SCREEN ON")
+//                getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+//            } else {
+//                // Not playing because playback is paused, ended, suppressed, or the player
+//                // is buffering, stopped or failed. Check player.playWhenReady,
+//                // player.playbackState, player.playbackSuppressionReason and
+//                // player.playerError for details.
+////                        Log.d("EXOPLAYER___", "Playing OFF: SCREEN ON DISABLED")
+//                getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+//
+//            }
+//        }
 
         override fun onMediaItemTransition(
             mediaItem: MediaItem?,
@@ -205,6 +302,7 @@ class MainActivity : AppCompatActivity() {
     public override fun onResume() {
         super.onResume()
         if ((Util.SDK_INT <= 23 || exoPlayer == null)) {
+//            prepareLiveStream()
             preparePlayer()
         }
     }
@@ -216,5 +314,8 @@ class MainActivity : AppCompatActivity() {
             "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
         const val SECOND_URL =
             "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+
+        const val LIVE_URL =
+            "https://lotus.stingray.com/ads/cmusic-cme004-dhaka/banglalink/master.m3u8"
     }
 }
