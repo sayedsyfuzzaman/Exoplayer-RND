@@ -1,6 +1,9 @@
 package com.syfuzzaman.exoplayer_rnd
 
+import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.util.Log
@@ -22,7 +25,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.PlaybackStats
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.DefaultTimeBar
 import com.syfuzzaman.exoplayer_rnd.databinding.ActivityMainBinding
 
@@ -45,7 +47,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var duration: TextView
     private lateinit var imageViewFullScreen: ImageButton
 
-    private var isFullScreen: Boolean = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -60,36 +61,43 @@ class MainActivity : AppCompatActivity() {
 
     private fun setFullScreen() {
         imageViewFullScreen.visibility = View.VISIBLE
+        val orientation = this.resources.configuration.orientation
+
+        if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            imageViewFullScreen.setImageDrawable(
+                ContextCompat.getDrawable(
+                    applicationContext,
+                    R.drawable.ic_fullscreen_exit
+                )
+            )
+        } else if (orientation == Configuration.ORIENTATION_PORTRAIT) {
+            imageViewFullScreen.setImageDrawable(
+                ContextCompat.getDrawable(
+                    applicationContext,
+                    R.drawable.ic_fullscreen
+                )
+            )
+
+        }
 
         imageViewFullScreen.setOnClickListener {
-
-            if (!isFullScreen) {
-                imageViewFullScreen.setImageDrawable(
-                    ContextCompat.getDrawable(
-                        applicationContext,
-                        R.drawable.ic_fullscreen_exit
-                    )
-                )
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            } else {
-                imageViewFullScreen.setImageDrawable(
-                    ContextCompat.getDrawable(
-                        applicationContext,
-                        R.drawable.ic_fullscreen
-                    )
-                )
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            } else if (orientation == Configuration.ORIENTATION_PORTRAIT) {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             }
-            isFullScreen = !isFullScreen
         }
+
     }
+
     private fun setFindViewById() {
         forwardBtn = binding.root.findViewById(R.id.exo_ffwd)
         rewindBtn = binding.root.findViewById(R.id.exo_rew)
         timeBar = binding.root.findViewById(R.id.exo_progress)
         duration = binding.root.findViewById(androidx.media3.ui.R.id.exo_duration)
         position = binding.root.findViewById(androidx.media3.ui.R.id.exo_position)
-        imageViewFullScreen = binding.root.findViewById(androidx.media3.ui.R.id.exo_minimal_fullscreen)
+        imageViewFullScreen =
+            binding.root.findViewById(androidx.media3.ui.R.id.exo_minimal_fullscreen)
     }
 
     private fun prepareLiveStream() {
