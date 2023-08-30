@@ -16,17 +16,20 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.DefaultTimeBar
 import com.syfuzzaman.exoplayer_rnd.databinding.ActivityMainBinding
+import okhttp3.OkHttpClient
 
 @UnstableApi
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var exoPlayer: ExoPlayer? = null
-
+    private var httpDataSourceFactory: OkHttpDataSource.Factory? = null
     private var mediaItemIndex = 0
     private val playbackStateListener: Player.Listener = playbackStateListener()
     private val playingChangeListener: Player.Listener = playingChangeListener()
@@ -47,20 +50,29 @@ class MainActivity : AppCompatActivity() {
         val view = binding.root
         setContentView(view)
 
-//        val fragment = PlayerFragment()
-//
-//        // Begin the fragment transaction
-//        supportFragmentManager.beginTransaction()
-//            .replace(R.id.container, fragment)
-//            .commit()
-
         setFindViewById()
         preparePlayer()
         Log.d("EXOPLAYER___", "onCreate Called")
     }
 
     private fun preparePlayer() {
+        val client = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val originalRequest = chain.request()
+                val modifiedRequest = originalRequest.newBuilder()
+                    .header("Cookie",  "user_id=45343; Path=/; Domain=iptv-isp.nexdecade.com/; Expires=Wed 30 Aug 2023 06:14:20 GMT; SameSite=None; Secure; expire=1693383318; Path=/; Domain=iptv-isp.nexdecade.com/; Expires=Wed 30 Aug 2023 06:14:20 GMT;  SameSite=None; Secure;asset_hash=6be8b97caf81c6b4afdbf40fcf2865c7; Path=/; Domain=iptv-isp.nexdecade.com/; Expires=Wed 30 Aug 2023 06:14:20 GMT;  SameSite=None; Secure;")
+                    .build()
+                chain.proceed(modifiedRequest)
+            }
+            .build()
+
+        // Create a HttpDataSourceFactory with the custom OkHttpClient
+        httpDataSourceFactory = OkHttpDataSource.Factory(client)
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(httpDataSourceFactory!!)
+
         exoPlayer = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setSeekForwardIncrementMs(10000)
             .setSeekBackIncrementMs(10000)
             .build()
@@ -69,10 +81,9 @@ class MainActivity : AppCompatActivity() {
         binding.playerView.player = exoPlayer
         setFullScreen()
 
-        // Build the media item with specific media extension
         val mediaItem = MediaItem.Builder()
             .setUri(URL)
-            .setMimeType(MimeTypes.APPLICATION_MP4)
+            .setMimeType(MimeTypes.APPLICATION_M3U8)
             .build()
 
         // Set the media item to be played.
@@ -105,7 +116,7 @@ class MainActivity : AppCompatActivity() {
 
         exoPlayer!!
             .createMessage { messageType: Int, payload: Any? ->
-                Toast.makeText(this, "Are you enjoying?", Toast.LENGTH_SHORT).show()
+//                Toast.makeText(this, "Are you enjoying?", Toast.LENGTH_SHORT).show()
             }
             .setLooper(Looper.getMainLooper())
             .setPosition(mediaItemIndex, playbackPosition)
@@ -142,23 +153,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Inside playbackStateListener
     private fun playbackStateListener() = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
-//            val stateString: String = when (playbackState) {
-//                ExoPlayer.STATE_IDLE -> "ExoPlayer.STATE_IDLE      -"
-//                ExoPlayer.STATE_BUFFERING -> "ExoPlayer.STATE_BUFFERING -"
-//                ExoPlayer.STATE_READY -> "ExoPlayer.STATE_READY     -"
-//                ExoPlayer.STATE_ENDED -> "ExoPlayer.STATE_ENDED     -"
-//                else -> "UNKNOWN_STATE             -"
-//            }
-//            Log.d("EXOPLAYER___", "changed state to $stateString")
-
-            when(playbackState){
+            when (playbackState) {
                 ExoPlayer.STATE_BUFFERING -> binding.playerView.useController = false
-                ExoPlayer.STATE_READY -> binding.playerView.useController = true
+                ExoPlayer.STATE_READY -> {
+                    binding.playerView.useController = true
+
+                    // Update playWhenReady based on the player's state
+                    playWhenReady = exoPlayer?.playWhenReady ?: true
+                }
             }
         }
     }
+
 
     private fun releasePlayer() {
         exoPlayer?.let { exoPlayer ->
@@ -243,7 +252,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val LIVE_URL = "YOUR_LIVE_STREAM_URL"
-        private const val URL = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+        private const val URL = "https://iptv-isp.nexdecade.com/vod/Going%20the%20Distance%20(2010)%20720p/Going.the.Distance.2010.720p.BrRip.x264.YIFY.mp4/playlist.m3u8"
         private const val FIRST_URL = "YOUR_FIRST_MEDIA_URL"
         private const val SECOND_URL = "YOUR_SECOND_MEDIA_URL"
     }
@@ -268,6 +277,10 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         if (Util.SDK_INT < 24) {
+            // Pause playback and release the player
+            playWhenReady = exoPlayer?.playWhenReady ?: true
+            exoPlayer?.removeMediaItems(0, exoPlayer!!.mediaItemCount)
+            exoPlayer?.clearMediaItems()
             releasePlayer()
         }
     }
@@ -275,7 +288,12 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         if (Util.SDK_INT >= 24) {
+            // Pause playback and release the player
+            playWhenReady = exoPlayer?.playWhenReady ?: true
+            exoPlayer?.removeMediaItems(0, exoPlayer!!.mediaItemCount)
+            exoPlayer?.clearMediaItems()
             releasePlayer()
         }
     }
+
 }

@@ -27,6 +27,7 @@ exoplayer = {group="androidx.media3", name="media3-exoplayer", version.ref="exop
 exoplayer-dash = {group="androidx.media3", name="media3-exoplayer-dash", version.ref="exoplayer-version"}
 exoplayer-ui = {group="androidx.media3", name="media3-ui", version.ref="exoplayer-version"}
 exoplayer-hls = {group="androidx.media3", name="media3-exoplayer-hls", version.ref="exoplayer-version"}
+androidx-media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version = "1.1.1" }
 
 
 
