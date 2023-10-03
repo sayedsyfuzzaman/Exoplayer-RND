@@ -16,23 +16,30 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
+import androidx.media3.database.DatabaseProvider
+import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DefaultDataSourceFactory
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.DefaultTimeBar
 import com.syfuzzaman.exoplayer_rnd.databinding.ActivityMainBinding
 import okhttp3.OkHttpClient
+import java.io.File
 
 @UnstableApi
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var exoPlayer: ExoPlayer? = null
     private var httpDataSourceFactory: OkHttpDataSource.Factory? = null
-    private var mediaItemIndex = 0
-    private val playbackStateListener: Player.Listener = playbackStateListener()
-    private val playingChangeListener: Player.Listener = playingChangeListener()
 
     private lateinit var forwardBtn: ImageButton
     private lateinit var rewindBtn: ImageButton
@@ -44,15 +51,23 @@ class MainActivity : AppCompatActivity() {
     private var isFullscreen = false
     private var playbackPosition = 0L
     private var playWhenReady = true
+
+    private lateinit var simpleCache: SimpleCache
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         val view = binding.root
         setContentView(view)
 
+        // player media caching
+        val evict = LeastRecentlyUsedCacheEvictor((100 * 1024 * 1024).toLong())
+        val databaseProvider: DatabaseProvider = StandaloneDatabaseProvider(this)
+        simpleCache = SimpleCache(File(this.cacheDir, "media"), evict, databaseProvider)
+
         setFindViewById()
         preparePlayer()
-        Log.d("EXOPLAYER___", "onCreate Called")
     }
 
     private fun preparePlayer() {
@@ -66,117 +81,54 @@ class MainActivity : AppCompatActivity() {
             }
             .build()
 
-        // Create a HttpDataSourceFactory with the custom OkHttpClient
         httpDataSourceFactory = OkHttpDataSource.Factory(client)
-
         val mediaSourceFactory = DefaultMediaSourceFactory(httpDataSourceFactory!!)
 
-        exoPlayer = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .setSeekForwardIncrementMs(10000)
-            .setSeekBackIncrementMs(10000)
-            .build()
-
-        exoPlayer?.playWhenReady = playWhenReady
-        binding.playerView.player = exoPlayer
-        setFullScreen()
+        val trackSelector = DefaultTrackSelector(this).apply {
+            setParameters(buildUponParameters().setMaxVideoSizeSd())
+        }
 
         val mediaItem = MediaItem.Builder()
             .setUri(URL)
             .setMimeType(MimeTypes.APPLICATION_M3U8)
             .build()
 
-        // Set the media item to be played.
-        exoPlayer?.setMediaItem(mediaItem)
-
-        exoPlayer?.apply {
-            addListener(playbackStateListener)
-            addListener(playingChangeListener)
-            seekTo(playbackPosition)
-            prepare()
-            play()
-        }
-
-        exoPlayer?.addAnalyticsListener(
-            object : AnalyticsListener {
-                override fun onPlaybackStateChanged(
-                    eventTime: AnalyticsListener.EventTime, @Player.State state: Int
-                ) {
-                    Log.d("EXOPLAYER___ Analytics", eventTime.toString())
-                }
-
-                override fun onDroppedVideoFrames(
-                    eventTime: AnalyticsListener.EventTime,
-                    droppedFrames: Int,
-                    elapsedMs: Long,
-                ) {
-                }
+        exoPlayer = ExoPlayer.Builder(this)
+            .setTrackSelector(trackSelector)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build()
+            .also { exoPlayer ->
+                binding.playerView.player = exoPlayer
+                val httpDataSourceFactory =
+                    DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
+                val defaultDataSourceFactory =
+                    DefaultDataSourceFactory(this, httpDataSourceFactory)
+                val cacheDataSourceFactory = CacheDataSource.Factory()
+                    .setCache(simpleCache)
+                    .setUpstreamDataSourceFactory(defaultDataSourceFactory)
+                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                val mediaSource = ProgressiveMediaSource
+                    .Factory(cacheDataSourceFactory)
+                    .createMediaSource(mediaItem)
+                exoPlayer.setMediaSource(mediaSource)
+                exoPlayer.setMediaItem(mediaItem)
+                exoPlayer.playWhenReady = playWhenReady
+                exoPlayer.prepare()
             }
-        )
-
-        exoPlayer!!
-            .createMessage { messageType: Int, payload: Any? ->
-//                Toast.makeText(this, "Are you enjoying?", Toast.LENGTH_SHORT).show()
-            }
-            .setLooper(Looper.getMainLooper())
-            .setPosition(mediaItemIndex, playbackPosition)
-            .setPayload(mediaItem)
-            .setDeleteAfterDelivery(false)
-            .send()
-
-        exoPlayer!!.addAnalyticsListener(
-            PlaybackStatsListener(/* keepHistory= */ true) { eventTime, playbackStats ->
-                // Analytics data for the session started at `eventTime` is ready.
-                Log.d(
-                    "EXOPLAYER___ Playback Stat",
-                    "Playback summary: " +
-                            "play time = ${playbackStats.totalPlayTimeMs}, " +
-                            "rebuffers = ${playbackStats.totalRebufferCount}, " +
-                            "totalPaused time = ${playbackStats.totalPausedTimeMs}"
-                )
-                Log.d(
-                    "EXOPLAYER___ Playback Stat",
-                    "Additional calculated summary metrics: " +
-                            "average video bitrate = ${playbackStats.meanVideoFormatBitrate}, " +
-                            "mean time between rebuffers = ${playbackStats.meanTimeBetweenRebuffers}"
-                )
-            }
-        )
     }
 
-    private fun playingChangeListener() = object : Player.Listener {
-        override fun onMediaItemTransition(
-            mediaItem: MediaItem?,
-            @Player.MediaItemTransitionReason reason: Int,
-        ) {
-            Log.d("EXOPLAYER___", "NEXT")
-        }
+    private fun release(){
+        binding.playerView.player?.release()
+        exoPlayer?.release()
+        simpleCache.release()
     }
 
-    // Inside playbackStateListener
-    private fun playbackStateListener() = object : Player.Listener {
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            when (playbackState) {
-                ExoPlayer.STATE_BUFFERING -> binding.playerView.useController = false
-                ExoPlayer.STATE_READY -> {
-                    binding.playerView.useController = true
-
-                    // Update playWhenReady based on the player's state
-                    playWhenReady = exoPlayer?.playWhenReady ?: true
-                }
-            }
-        }
+    private fun pause() {
+        binding.playerView.player?.pause()
     }
 
-
-    private fun releasePlayer() {
-        exoPlayer?.let { exoPlayer ->
-            playbackPosition = exoPlayer.currentPosition
-            mediaItemIndex = exoPlayer.currentMediaItemIndex
-            playWhenReady = exoPlayer.playWhenReady
-            exoPlayer.release()
-        }
-        exoPlayer = null
+    private fun resume() {
+        binding.playerView.player?.play()
     }
 
     private fun setFullScreen() {
@@ -253,47 +205,18 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val LIVE_URL = "YOUR_LIVE_STREAM_URL"
         private const val URL = "https://iptv-isp.nexdecade.com/vod/Going%20the%20Distance%20(2010)%20720p/Going.the.Distance.2010.720p.BrRip.x264.YIFY.mp4/playlist.m3u8"
-        private const val FIRST_URL = "YOUR_FIRST_MEDIA_URL"
+        private const val FIRST_URL = "https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8"
         private const val SECOND_URL = "YOUR_SECOND_MEDIA_URL"
-    }
-
-
-
-    override fun onStart() {
-        super.onStart()
-        if (Util.SDK_INT >= 24) {
-            preparePlayer()
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        hideSystemUi()
-        if (Util.SDK_INT < 24) {
-            preparePlayer()
-        }
     }
 
     override fun onPause() {
         super.onPause()
-        if (Util.SDK_INT < 24) {
-            // Pause playback and release the player
-            playWhenReady = exoPlayer?.playWhenReady ?: true
-            exoPlayer?.removeMediaItems(0, exoPlayer!!.mediaItemCount)
-            exoPlayer?.clearMediaItems()
-            releasePlayer()
-        }
+        pause()
     }
 
-    override fun onStop() {
-        super.onStop()
-        if (Util.SDK_INT >= 24) {
-            // Pause playback and release the player
-            playWhenReady = exoPlayer?.playWhenReady ?: true
-            exoPlayer?.removeMediaItems(0, exoPlayer!!.mediaItemCount)
-            exoPlayer?.clearMediaItems()
-            releasePlayer()
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        release()
     }
 
 }
